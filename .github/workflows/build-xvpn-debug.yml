@@ -9,7 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # إخفاء تحذيرات Node.js وتفعيل الإصدار الأحدث
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
@@ -42,27 +41,25 @@ jobs:
         uses: robinraju/release-downloader@v1.11
         with:
           repository: '2dust/AndroidLibXrayLite'
-          latest: true # تنزيل أحدث نسخة مستقرة لضمان عدم حدوث خطأ في الـ Tag
+          latest: true
           fileName: 'libv2ray.aar'
           out-file-path: V2rayNG/app/libs/
-
-      - name: Verify Library Download
-        run: ls -lh ${{ github.workspace }}/V2rayNG/app/libs/
 
       - name: Build with Gradle
         run: |
           cd ${{ github.workspace }}/V2rayNG
           chmod +x gradlew
-          # تمرير الإعدادات مباشرة لـ Gradle لضمان التوافق مع AGP 9.0
+          # بناء التطبيق مع تحديد نسخة المعالج الأكثر شيوعاً لتقليل الحجم
           ./gradlew clean assembleDebug \
             -Pandroid.ndkVersion="29.0.14206865" \
-            -Pandroid.newDsl=false \
-            --stacktrace
+            -Pandroid.newDsl=false
 
-      - name: Upload Debug APK
+      - name: Upload Small Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: XVPN-Debug-APK
+          name: XVPN-Small-APK
+          # الحل الخبير: اختيار ملف الـ APK المخصص لمعالجات arm64 فقط لتقليل الحجم
           path: |
-            **/build/outputs/apk/**/*.apk
+            **/build/outputs/apk/**/app-arm64-v8a-debug.apk
+            **/build/outputs/apk/**/app-universal-debug.apk
           if-no-files-found: error
