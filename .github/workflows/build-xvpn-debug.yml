@@ -30,16 +30,24 @@ jobs:
           cmdline-tools-version: 'latest'
           packages: 'platforms;android-34 build-tools;34.0.0 platform-tools'
 
-      - name: Install NDK
+      - name: Install NDK and Configure Build
         run: |
-          # تثبيت نسخة الـ NDK المطلوبة
+          # 1. تثبيت نسخة الـ NDK المطلوبة (تم دمج الأمر لمنع أخطاء الـ Shell)
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --channel=0 --install "ndk;29.0.14206865"
           
-          # تعيين مسار الـ NDK في بيئة GitHub
-          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
+          # 2. تعيين مسار الـ NDK في بيئة العمل
+          NDK_PATH="$ANDROID_HOME/ndk/29.0.14206865"
+          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
           
-          # حقن نسخة الـ NDK في ملف build.gradle.kts بشكل صحيح (تم تصحيح الخطأ الإملائي)
-          sed -i '10i\nndkVersion = "29.0.14206865"' ${{ github.workspace }}/V2rayNG/app/build.gradle.kts
+          # 3. حقن ndkVersion بشكل احترافي داخل ملف build.gradle.kts
+          # نستخدم مساراً مطلقاً لضمان الدقة
+          GRADLE_FILE="${{ github.workspace }}/V2rayNG/app/build.gradle.kts"
+          
+          # تنظيف أي محاولات سابقة خاطئة (مثل nndkVersion أو نسخ مكررة)
+          sed -i '/ndkVersion/d' "$GRADLE_FILE"
+          
+          # البحث عن بلوك android { وحقن النسخة بداخله لضمان توافق Gradle
+          sed -i '/android {/a \    ndkVersion = "29.0.14206865"' "$GRADLE_FILE"
 
       - name: Restore cached libhevtun
         id: cache-libhevtun-restore
@@ -51,6 +59,8 @@ jobs:
       - name: Build libhevtun
         if: steps.cache-libhevtun-restore.outputs.cache-hit != 'true'
         run: |
+          # التأكد من صلاحيات التنفيذ وتشغيل السكريبت
+          chmod +x compile-hevtun.sh
           bash compile-hevtun.sh
 
       - name: Save libhevtun
@@ -60,15 +70,20 @@ jobs:
           path: ${{ github.workspace }}/libs
           key: libhevtun-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('compile-hevtun.sh') }}
 
-      - name: Copy libhevtun
+      - name: Copy libhevtun to Project
         run: |
-          mkdir -p ${{ github.workspace }}/V2rayNG/app/libs
-          cp -r ${{ github.workspace }}/libs/* ${{ github.workspace }}/V2rayNG/app/libs/ || true
+          # إنشاء المجلد المستهدف ونسخ المكتبات مع تجنب أخطاء المسارات
+          TARGET_DIR="${{ github.workspace }}/V2rayNG/app/libs"
+          mkdir -p "$TARGET_DIR"
+          if [ -d "${{ github.workspace }}/libs" ]; then
+            cp -r ${{ github.workspace }}/libs/* "$TARGET_DIR/" || true
+          fi
 
       - name: Fetch AndroidLibXrayLite tag
         run: |
           pushd AndroidLibXrayLite
-          CURRENT_TAG=$(git describe --tags --abbrev=0 || echo "v2.2.4")
+          # الحصول على أحدث Tag أو استخدام قيمة افتراضية آمنة
+          CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v2.2.4")
           echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
           popd
 
@@ -83,8 +98,10 @@ jobs:
       - name: Build Debug APK
         run: |
           cd ${{ github.workspace }}/V2rayNG
+          # إعداد ملف local.properties لضمان معرفة Gradle بمكان الـ SDK
           echo "sdk.dir=${ANDROID_HOME}" > local.properties
           chmod +x gradlew
+          # تشغيل البناء مع تجاوز تحذيرات الـ DSL الجديدة في AGP 9.0
           ./gradlew assembleDebug
 
       - name: Upload Debug APK
