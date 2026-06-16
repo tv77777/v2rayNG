@@ -3,19 +3,21 @@ name: Build XVPN Debug APK
 on:
   workflow_dispatch:
   push:
-    branches:
-      - master
+    branches: [ master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # تفعيل Node 24 لتجنب التحذيرات المستقبلية
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
-          fetch-depth: '0'
+          fetch-depth: 0
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -26,86 +28,34 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          log-accepted-android-sdk-licenses: false
-          cmdline-tools-version: 'latest'
-          packages: 'platforms;android-34 build-tools;34.0.0 platform-tools'
+          packages: 'platforms;android-34 build-tools;34.0.0'
 
-      - name: Install NDK and Configure Build
+      - name: Install NDK and Configure
         run: |
-          # 1. تثبيت نسخة الـ NDK المطلوبة (تم دمج الأمر لمنع أخطاء الـ Shell)
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --channel=0 --install "ndk;29.0.14206865"
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
           
-          # 2. تعيين مسار الـ NDK في بيئة العمل
-          NDK_PATH="$ANDROID_HOME/ndk/29.0.14206865"
-          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
-          
-          # 3. حقن ndkVersion بشكل احترافي داخل ملف build.gradle.kts
-          # نستخدم مساراً مطلقاً لضمان الدقة
+          # حقن ndkVersion بشكل آمن
           GRADLE_FILE="${{ github.workspace }}/V2rayNG/app/build.gradle.kts"
-          
-          # تنظيف أي محاولات سابقة خاطئة (مثل nndkVersion أو نسخ مكررة)
           sed -i '/ndkVersion/d' "$GRADLE_FILE"
-          
-          # البحث عن بلوك android { وحقن النسخة بداخله لضمان توافق Gradle
           sed -i '/android {/a \    ndkVersion = "29.0.14206865"' "$GRADLE_FILE"
 
-      - name: Restore cached libhevtun
-        id: cache-libhevtun-restore
-        uses: actions/cache/restore@v3
-        with:
-          path: ${{ github.workspace }}/libs
-          key: libhevtun-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('compile-hevtun.sh') }}
-
-      - name: Build libhevtun
-        if: steps.cache-libhevtun-restore.outputs.cache-hit != 'true'
-        run: |
-          # التأكد من صلاحيات التنفيذ وتشغيل السكريبت
-          chmod +x compile-hevtun.sh
-          bash compile-hevtun.sh
-
-      - name: Save libhevtun
-        if: steps.cache-libhevtun-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v3
-        with:
-          path: ${{ github.workspace }}/libs
-          key: libhevtun-${{ runner.os }}-${{ env.NDK_HOME }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('compile-hevtun.sh') }}
-
-      - name: Copy libhevtun to Project
-        run: |
-          # إنشاء المجلد المستهدف ونسخ المكتبات مع تجنب أخطاء المسارات
-          TARGET_DIR="${{ github.workspace }}/V2rayNG/app/libs"
-          mkdir -p "$TARGET_DIR"
-          if [ -d "${{ github.workspace }}/libs" ]; then
-            cp -r ${{ github.workspace }}/libs/* "$TARGET_DIR/" || true
-          fi
-
-      - name: Fetch AndroidLibXrayLite tag
-        run: |
-          pushd AndroidLibXrayLite
-          # الحصول على أحدث Tag أو استخدام قيمة افتراضية آمنة
-          CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v2.2.4")
-          echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
-          popd
-
-      - name: Download libv2ray
-        uses: robinraju/release-downloader@v1.9
-        with:
-          repository: '2dust/AndroidLibXrayLite'
-          tag: ${{ env.CURRENT_TAG }}
-          fileName: 'libv2ray.aar'
-          out-file-path: V2rayNG/app/libs/
-
-      - name: Build Debug APK
+      - name: Build with Gradle
         run: |
           cd ${{ github.workspace }}/V2rayNG
-          # إعداد ملف local.properties لضمان معرفة Gradle بمكان الـ SDK
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
           chmod +x gradlew
-          # تشغيل البناء مع تجاوز تحذيرات الـ DSL الجديدة في AGP 9.0
-          ./gradlew assembleDebug
+          # تنظيف البناء السابق ثم البدء من جديد لضمان إنتاج الملفات
+          ./gradlew clean assembleDebug --stacktrace
+
+      - name: List Files (Debug)
+        # هذه الخطوة اختيارية لكنها تساعدنا كخبراء في رؤية أين ذهبت الملفات إذا فشل الرفع
+        run: find ${{ github.workspace }} -name "*.apk"
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: XVPN-Debug-APK
-          path: ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/debug/*.apk
+          # البحث في كل مكان عن أي ملف APK
+          path: |
+            **/*.apk
+          if-no-files-found: error
