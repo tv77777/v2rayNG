@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # إخفاء تحذيرات Node.js وتفعيل الإصدار الأحدث
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout code
@@ -29,4 +32,37 @@ jobs:
 
       - name: Install NDK
         run: |
-          echo 
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
+
+      - name: Prepare Libs Directory
+        run: mkdir -p ${{ github.workspace }}/V2rayNG/app/libs
+
+      - name: Download libv2ray
+        uses: robinraju/release-downloader@v1.11
+        with:
+          repository: '2dust/AndroidLibXrayLite'
+          latest: true # تنزيل أحدث نسخة مستقرة لضمان عدم حدوث خطأ في الـ Tag
+          fileName: 'libv2ray.aar'
+          out-file-path: V2rayNG/app/libs/
+
+      - name: Verify Library Download
+        run: ls -lh ${{ github.workspace }}/V2rayNG/app/libs/
+
+      - name: Build with Gradle
+        run: |
+          cd ${{ github.workspace }}/V2rayNG
+          chmod +x gradlew
+          # تمرير الإعدادات مباشرة لـ Gradle لضمان التوافق مع AGP 9.0
+          ./gradlew clean assembleDebug \
+            -Pandroid.ndkVersion="29.0.14206865" \
+            -Pandroid.newDsl=false \
+            --stacktrace
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: XVPN-Debug-APK
+          path: |
+            **/build/outputs/apk/**/*.apk
+          if-no-files-found: error
