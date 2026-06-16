@@ -8,9 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      # تفعيل Node 24 لتجنب التحذيرات المستقبلية
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout code
@@ -30,32 +27,6 @@ jobs:
         with:
           packages: 'platforms;android-34 build-tools;34.0.0'
 
-      - name: Install NDK and Configure
+      - name: Install NDK
         run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;29.0.14206865"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
-          
-          # حقن ndkVersion بشكل آمن
-          GRADLE_FILE="${{ github.workspace }}/V2rayNG/app/build.gradle.kts"
-          sed -i '/ndkVersion/d' "$GRADLE_FILE"
-          sed -i '/android {/a \    ndkVersion = "29.0.14206865"' "$GRADLE_FILE"
-
-      - name: Build with Gradle
-        run: |
-          cd ${{ github.workspace }}/V2rayNG
-          chmod +x gradlew
-          # تنظيف البناء السابق ثم البدء من جديد لضمان إنتاج الملفات
-          ./gradlew clean assembleDebug --stacktrace
-
-      - name: List Files (Debug)
-        # هذه الخطوة اختيارية لكنها تساعدنا كخبراء في رؤية أين ذهبت الملفات إذا فشل الرفع
-        run: find ${{ github.workspace }} -name "*.apk"
-
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: XVPN-Debug-APK
-          # البحث في كل مكان عن أي ملف APK
-          path: |
-            **/*.apk
-          if-no-files-found: error
+          echo 
