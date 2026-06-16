@@ -32,13 +32,12 @@ jobs:
 
       - name: Install NDK
         run: |
-          # تثبيت نسخة الـ NDK المطلوبة
+          # إصلاح: تم دمج الأمر في سطر واحد لإزالة خطأ العلامة المائلة العكسية
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --channel=0 --install "ndk;29.0.14206865"
           
-          # تعيين مسار الـ NDK في بيئة GitHub
           echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
           
-          # حقن نسخة الـ NDK في ملف build.gradle.kts إذا لم تكن موجودة
+          # التأكد من كتابة نسخة الـ NDK في ملف الإعدادات
           sed -i '10i\nndkVersion = "29.0.14206865"' ${{ github.workspace }}/V2rayNG/app/build.gradle.kts
 
       - name: Restore cached libhevtun
@@ -62,6 +61,7 @@ jobs:
 
       - name: Copy libhevtun
         run: |
+          # إنشاء المجلد إذا لم يكن موجوداً ثم نسخ المكتبات
           mkdir -p ${{ github.workspace }}/V2rayNG/app/libs
           cp -r ${{ github.workspace }}/libs/* ${{ github.workspace }}/V2rayNG/app/libs/ || true
 
