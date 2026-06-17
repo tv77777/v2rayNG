@@ -1,4 +1,4 @@
-name: Build XVPN Debug APK
+name: Build XVPN Optimized APK
 
 on:
   workflow_dispatch:
@@ -49,26 +49,37 @@ jobs:
         run: |
           cd ${{ github.workspace }}/V2rayNG
           chmod +x gradlew
-          # بناء نسخة arm64 فقط لتقليل الحجم وسرعة البناء
+          # بناء نسخة Debug مع تمرير الإعدادات اللازمة
           ./gradlew clean assembleDebug \
             -Pandroid.ndkVersion="29.0.14206865" \
             -Pandroid.newDsl=false
 
-      - name: Find and Prepare APK
-        # هذه الخطوة تبحث عن ملف الـ APK وتضعه في مجلد منفصل لضمان رفعه وحده
+      - name: Collect and Rename APK
+        # هذا الجزء هو الأهم: يبحث عن الملف، يغير اسمه، ويضعه في مكان مضمون
         run: |
-          mkdir -p output_apk
-          # البحث عن ملف arm64 وهو الأهم للهواتف الحديثة
-          find ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/ -name "*arm64-v8a-debug.apk" -exec cp {} output_apk/ \;
-          # إذا لم يجد الملف السابق، يبحث عن أي ملف APK ناتج
-          if [ -z "$(ls -A output_apk)" ]; then
-            find ${{ github.workspace }}/V2rayNG/app/build/outputs/apk/ -name "*.apk" -exec cp {} output_apk/ \;
+          mkdir -p final_output
+          # البحث عن أي ملف APK ناتج (نركز على arm64-v8a أولاً لصغر الحجم)
+          APK_PATH=$(find ${{ github.workspace }} -name "*arm64-v8a-debug.apk" | head -n 1)
+          
+          # إذا لم يجد arm64، يبحث عن أي APK آخر
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find ${{ github.workspace }} -name "*.apk" | head -n 1)
           fi
+          
+          if [ -z "$APK_PATH" ]; then
+            echo "خطأ: لم يتم العثور على أي ملف APK!"
+            exit 1
+          fi
+          
+          echo "تم العثور على الملف في: $APK_PATH"
+          cp "$APK_PATH" final_output/XVPN-Lite.apk
+          echo "حجم الملف النهائي:"
+          ls -lh final_output/XVPN-Lite.apk
 
-      - name: Upload Small Debug APK
+      - name: Upload Lite APK
         uses: actions/upload-artifact@v4
         with:
-          name: XVPN-Small-APK
-          # رفع محتويات المجلد الذي جهزناه فقط
-          path: output_apk/*.apk
+          name: XVPN-Lite-App
+          # نرفع فقط الملف الذي قمنا بتجهيزه وتسميته
+          path: final_output/XVPN-Lite.apk
           if-no-files-found: error
